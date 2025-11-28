@@ -98,3 +98,38 @@ Install dependencies:
 
 ```bash
 pip install pyserial pandas scikit-learn joblib paho-mqtt
+```
+Update SERIAL_PORT in Inference.py, then run:
+
+```
+python Inference.py
+```
+### **4. Web Dashboard**
+
+1. Open index.html in any modern browser.
+
+2. Add your Gemini API Key inside the script configuration for AI features.
+
+## 🎮 Usage
+
+1. Start the System: Power up ESP32 + run Python inference engine.
+
+2. Monitor: Watch terminal for "Safe" or "Danger" predictions.
+
+3. Simulate Heat: Breathe on DHT11 to increase humidity/temperature.
+
+## Expected Response:
+
+- 🔴 Red LED turns ON
+
+- ⚡ Relay clicks ON (misting activates)
+
+- 📊 Dashboard pulses red
+
+- 🤖 “Analyze Conditions” → Generates real-time heat-risk report using Gemini
+
+## 📜 License
+
+This project is open-source and available under the MIT License.
+
+### Built with 💚 for a cooler, safer world.
