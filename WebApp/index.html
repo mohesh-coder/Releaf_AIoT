@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReLeaf Command Center</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Paho MQTT Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        .pulse-danger {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .shimmer {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen text-slate-800">
+
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800"><i class="fas fa-leaf text-green-500 mr-2"></i>ReLeaf</h1>
+                <p class="text-sm text-slate-500">Urban Cooling System</p>
+            </div>
+            <div id="connectionStatus" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-500">
+                Disconnected
+            </div>
+        </div>
+
+        <!-- Main Status Card -->
+        <div id="statusCard" class="glass-panel p-6 mb-6 text-center border-l-4 border-gray-400 transition-all duration-300">
+            <h2 class="text-gray-500 uppercase tracking-wider text-xs font-bold mb-2">Current Status</h2>
+            <div id="statusText" class="text-4xl font-black text-gray-400 mb-2">WAITING...</div>
+            <div id="probText" class="text-sm font-medium text-gray-400 opacity-0">Confidence: 0%</div>
+        </div>
+
+        <!-- Sensor Data Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <!-- Local Temp -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-thermometer-half text-orange-500 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Local Temp</span>
+                <span id="localTemp" class="text-xl font-bold">--°C</span>
+            </div>
+            <!-- Forecast Temp -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-cloud-sun text-orange-400 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Forecast Temp</span>
+                <span id="omTemp" class="text-xl font-bold">--°C</span>
+            </div>
+            <!-- Apparent Temp -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-fire-alt text-red-500 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Feels Like</span>
+                <span id="omApparent" class="text-xl font-bold">--°C</span>
+            </div>
+            <!-- Local Humidity -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-tint text-blue-500 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Local Humidity</span>
+                <span id="localRh" class="text-xl font-bold">--%</span>
+            </div>
+            <!-- Forecast Humidity -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-cloud-rain text-blue-400 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Forecast Hum</span>
+                <span id="omRh" class="text-xl font-bold">--%</span>
+            </div>
+            <!-- Timestamp -->
+            <div class="glass-panel p-4 flex flex-col items-center justify-center">
+                <i class="fas fa-clock text-gray-500 text-2xl mb-2"></i>
+                <span class="text-xs text-slate-400 uppercase font-bold text-center">Last Update</span>
+                <span id="lastTs" class="text-xl font-bold">--</span>
+            </div>
+        </div>
+
+        <!-- Gemini AI Analysis Card -->
+        <div class="glass-panel p-6 mb-6 border border-purple-100 bg-gradient-to-r from-white to-purple-50">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-purple-700 uppercase"><i class="fas fa-robot mr-2"></i>AI Environmental Analyst</h3>
+                <span class="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded-full">Gemini Powered</span>
+            </div>
+            
+            <div id="aiResponseArea" class="hidden bg-white/50 rounded-lg p-4 mb-4 text-sm text-slate-700 italic border border-purple-100 min-h-[80px]">
+                <!-- AI Text goes here -->
+            </div>
+
+            <button onclick="generateAIReport()" id="aiBtn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transform transition active:scale-95 flex items-center justify-center">
+                <i class="fas fa-sparkles mr-2"></i> Analyze Conditions ✨
+            </button>
+        </div>
+
+        <!-- Actions -->
+        <div class="glass-panel p-6">
+            <h3 class="text-sm font-bold text-slate-700 mb-4 uppercase">Manual Override</h3>
+            <button onclick="triggerMist()" id="triggerBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg shadow-lg transform transition active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fas fa-tint mr-2"></i> ACTIVATE MIST NOW
+            </button>
+            <p class="text-xs text-center text-slate-400 mt-3">Triggers device for 30 seconds</p>
+        </div>
+
+        <!-- Log -->
+        <div class="mt-8">
+            <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">System Log</h4>
+            <div id="logArea" class="bg-white rounded-lg p-3 h-32 overflow-y-auto text-xs font-mono text-slate-600 shadow-inner border border-slate-200">
+                <div class="text-gray-400 italic">System ready...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Replace the placeholders below before deploying/testing.
+
+        // Replace with your server-side endpoint or short-lived key. DO NOT commit a real key to public repos.
+        const apiKey = "YOUR_GOOGLE_API_KEY";
+
+        // MQTT broker placeholders (replace with actual broker host and WSS port)
+        const MQTT_BROKER = "YOUR_MQTT_BROKER_HOST"; // e.g. "broker.example.com"
+        const MQTT_PORT = 8084; // e.g. 8084 for secure websocket; replace if different
+
+        const STATION_ID = "station001";
+        const TOPIC_RESULT = `station/${STATION_ID}/ml_result`;
+        const TOPIC_COMMAND = `station/${STATION_ID}/command`;
+        
+        // --- CLIENT ---
+        const clientId = "releaf_web_" + Math.random().toString(16).substr(2, 8);
+        const client = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, clientId);
+
+        // --- STATE ---
+        let lastKnownData = {
+            local_temp: null,
+            local_rh: null,
+            status: "UNKNOWN"
+        };
+
+        // --- ELEMENTS ---
+        const statusCard = document.getElementById('statusCard');
+        const statusText = document.getElementById('statusText');
+        const probText = document.getElementById('probText');
+        
+        const localTempEl = document.getElementById('localTemp');
+        const omTempEl = document.getElementById('omTemp');
+        const omApparentEl = document.getElementById('omApparent');
+        const localRhEl = document.getElementById('localRh');
+        const omRhEl = document.getElementById('omRh');
+        const lastTsEl = document.getElementById('lastTs');
+
+        const logArea = document.getElementById('logArea');
+        const connStatus = document.getElementById('connectionStatus');
+        const triggerBtn = document.getElementById('triggerBtn');
+        const aiBtn = document.getElementById('aiBtn');
+        const aiResponseArea = document.getElementById('aiResponseArea');
+
+        // --- LOGGING ---
+        function log(msg) {
+            const entry = document.createElement('div');
+            entry.textContent = `> ${new Date().toLocaleTimeString()} ${msg}`;
+            logArea.prepend(entry);
+        }
+
+        // --- MQTT CONNECTION ---
+        function connect() {
+            log("Connecting to MQTT (WSS)...");
+            triggerBtn.disabled = true;
+            client.connect({
+                onSuccess: onConnect,
+                useSSL: true,
+                onFailure: (e) => {
+                    log("Failed to connect: " + e.errorMessage);
+                    connStatus.textContent = "Error";
+                    connStatus.className = "px-3 py-1 rounded-full text-xs font-semibold bg-red-200 text-red-600";
+                    setTimeout(connect, 5000);
+                },
+                keepAliveInterval: 30
+            });
+        }
+
+        function onConnect() {
+            log("Connected to Broker");
+            connStatus.textContent = "Connected";
+            connStatus.className = "px-3 py-1 rounded-full text-xs font-semibold bg-green-200 text-green-600";
+            triggerBtn.disabled = false;
+
+            client.subscribe(TOPIC_RESULT);
+            log(`Subscribed to ${TOPIC_RESULT}`);
+        }
+
+        client.onMessageArrived = function (message) {
+            const topic = message.destinationName;
+            const payload = message.payloadString;
+
+            if (topic === TOPIC_RESULT) {
+                try {
+                    const data = JSON.parse(payload);
+                    updateUI(data);
+                } catch (e) {
+                    log("Error parsing JSON: " + e.message);
+                }
+            }
+        };
+
+        client.onConnectionLost = function (responseObject) {
+            if (responseObject.errorCode !== 0) {
+                log("Connection lost: " + responseObject.errorMessage);
+                connStatus.textContent = "Reconnecting...";
+                connStatus.className = "px-3 py-1 rounded-full text-xs font-semibold bg-yellow-200 text-yellow-600";
+                setTimeout(connect, 2000);
+            }
+        };
+
+        // --- UI UPDATES ---
+        function updateUI(data) {
+            const source = data.features || data;
+
+            const local_temp = (source.local_temp !== undefined) ? source.local_temp : data.local_temp;
+            const om_temp = (source.om_temp !== undefined) ? source.om_temp : data.om_temp;
+            const local_rh = (source.local_rh !== undefined) ? source.local_rh : data.local_rh;
+            const om_rh = (source.om_rh !== undefined) ? source.om_rh : data.om_rh;
+            const om_apparent = (source.om_apparent !== undefined) ? source.om_apparent : data.om_apparent;
+
+            // Update State
+            lastKnownData.local_temp = local_temp;
+            lastKnownData.local_rh = local_rh;
+            lastKnownData.om_apparent = om_apparent;
+            
+            // Update Display
+            if (local_temp !== undefined && local_temp !== null) localTempEl.textContent = Number(local_temp).toFixed(1) + "°C";
+            if (om_temp !== undefined && om_temp !== null) omTempEl.textContent = Number(om_temp).toFixed(1) + "°C";
+            if (om_apparent !== undefined && om_apparent !== null) omApparentEl.textContent = Number(om_apparent).toFixed(1) + "°C";
+            
+            if (local_rh !== undefined && local_rh !== null) localRhEl.textContent = Number(local_rh).toFixed(0) + "%";
+            if (om_rh !== undefined && om_rh !== null) omRhEl.textContent = Number(om_rh).toFixed(0) + "%";
+            
+            lastTsEl.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            // Status Logic
+            if (data.status === "DANGER" || data.decision === 1) {
+                lastKnownData.status = "DANGER";
+                statusText.textContent = "DANGER DETECTED";
+                statusCard.className = "glass-panel p-6 mb-6 text-center border-l-4 border-red-500 bg-red-50 pulse-danger transition-all duration-300";
+                statusText.className = "text-4xl font-black text-red-600 mb-2";
+                if (data.probability) {
+                    probText.style.opacity = "1";
+                    probText.textContent = `Model Confidence: ${(data.probability * 100).toFixed(1)}%`;
+                }
+            } else if (data.status === "SAFE" || data.decision === 0) {
+                lastKnownData.status = "SAFE";
+                statusText.textContent = "SAFE CONDITIONS";
+                statusCard.className = "glass-panel p-6 mb-6 text-center border-l-4 border-green-500 bg-green-50 transition-all duration-300";
+                statusText.className = "text-4xl font-black text-green-600 mb-2";
+                if (data.probability) {
+                    probText.style.opacity = "1";
+                    probText.textContent = `Model Confidence: ${(data.probability * 100).toFixed(1)}%`;
+                }
+            } else {
+                lastKnownData.status = "MONITORING";
+                statusText.textContent = "MONITORING";
+                statusCard.className = "glass-panel p-6 mb-6 text-center border-l-4 border-blue-400 transition-all duration-300";
+                statusText.className = "text-4xl font-black text-blue-400 mb-2";
+                probText.style.opacity = "0";
+            }
+            
+            log(`Updated data received`);
+        }
+
+        // --- GEMINI API INTEGRATION ---
+        async function generateAIReport() {
+            if (lastKnownData.local_temp === null) {
+                alert("Waiting for sensor data...");
+                return;
+            }
+
+            // UI Feedback
+            const originalBtnText = aiBtn.innerHTML;
+            aiBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Analyzing...';
+            aiBtn.disabled = true;
+            aiResponseArea.classList.remove("hidden");
+            aiResponseArea.classList.add("shimmer");
+            aiResponseArea.innerHTML = "Consulting environmental models...";
+
+            // Construct Prompt
+            const prompt = `
+                You are an expert environmental control analyst for an urban cooling system called ReLeaf.
+                
+                Current Telemetry:
+                - Local Temperature: ${lastKnownData.local_temp}°C
+                - Local Humidity: ${lastKnownData.local_rh}%
+                - Apparent Temperature (Feels Like): ${lastKnownData.om_apparent || 'N/A'}°C
+                - System Status: ${lastKnownData.status}
+
+                Task:
+                1. Briefly analyze the heat risk for pedestrians.
+                2. Provide 2 concise health recommendations.
+                3. If Status is DANGER, justify why the misting system should be active.
+                
+                Keep the response short, under 30 words, and friendly. Use emojis.
+            `;
+
+            try {
+                const response = await callGeminiAPI(prompt);
+                aiResponseArea.classList.remove("shimmer");
+                // Typewriter effect or just text
+                aiResponseArea.innerHTML = `<strong><i class="fas fa-check-circle text-green-500 mr-1"></i> Analysis Complete:</strong><br>${response}`;
+            } catch (error) {
+                aiResponseArea.classList.remove("shimmer");
+                aiResponseArea.innerHTML = `<span class="text-red-500">Analysis failed. Please try again later.</span>`;
+                console.error(error);
+            } finally {
+                aiBtn.innerHTML = originalBtnText;
+                aiBtn.disabled = false;
+            }
+        }
+
+        async function callGeminiAPI(userQuery, retries = 0) {
+        
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`; // <-- Replace with your secure proxy endpoint
+            const payload = { text: userQuery };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.text || "No analysis generated.";
+
+            } catch (error) {
+                if (retries < 3) {
+                    const delay = Math.pow(2, retries) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return callGeminiAPI(userQuery, retries + 1);
+                }
+                throw error;
+            }
+        }
+
+        // --- MANUAL TRIGGER ---
+        window.triggerMist = function() {
+            // Paho client has no isConnected() method in all builds, guard defensively:
+            if (!client || typeof client.isConnected === 'function' && !client.isConnected()) {
+                alert("Not connected to MQTT broker");
+                return;
+            }
+
+            const message = new Paho.MQTT.Message("activate");
+            message.destinationName = TOPIC_COMMAND;
+            client.send(message);
+            
+            log("SENT: Manual Activation Command");
+            
+            const originalText = triggerBtn.innerHTML;
+            triggerBtn.innerHTML = '<i class="fas fa-check mr-2"></i> SENT';
+            triggerBtn.classList.add("bg-green-600");
+            triggerBtn.classList.remove("bg-blue-600");
+            
+            setTimeout(() => {
+                triggerBtn.innerHTML = originalText;
+                triggerBtn.classList.remove("bg-green-600");
+                triggerBtn.classList.add("bg-blue-600");
+            }, 2000);
+        }
+
+        // Start
+        connect();
+
+    </script>
+</body>
+</html>
